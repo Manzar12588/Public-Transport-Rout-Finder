@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public Transport Route Finder</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="brand-logo-container" >
+                <img src="logo.png" alt="Logo" class="brand-logo" > 
+                <a href="#" class="brand-text">MANZIL</a>
+            </div>
+            
+            <!-- Right side: Navigation links -->
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="https://www.google.com/maps/place/Lahore,+Punjab,+Pakistan">Map</a></li>
+                <li><a href="#route-details">Route Details</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <!-- Container: Grid with Form (4 columns) and Map (8 columns) -->
+    <div class="container-fluid">
+        <div class="row align-items-stretch" style="margin-top: 10px;">
+            <!-- Left Section: Form in 4 columns -->
+            <div class="col-md-4 d-flex flex-column">
+                <div class="form-section bg-white p-4 rounded shadow flex-grow-1">
+                    <!-- Form inputs and buttons -->
+                    <div class="input-group mb-3">
+                        <input id="origin" type="text" class="form-control" placeholder="Enter starting location or click on map">
+                        <button class="btn btn-warning" onclick="useMapForOrigin()">Map</button>
+                    </div>
+                    <div class="input-group mb-3">
+                        <input id="destination" type="text" class="form-control" placeholder="Enter destination or click on map">
+                        <button class="btn btn-warning" onclick="useMapForDestination()">Map</button>
+                    </div>
+                    <button class="btn custom-btn w-100" onclick="findRoute()">Find Route</button>
+    
+                    <!-- Input fields for Distance and Duration (hidden initially) -->
+                    <input id="distance" type="text" class="form-control" placeholder="Distance" style="margin-top: 20px; display: none;">
+                    <input id="duration" type="text" class="form-control" placeholder="Duration" style="margin-top: 30px; display: none;">
+
+                </div>
+            </div>
+    
+            <!-- Right Section: Map in 8 columns -->
+            <div class="col-md-8 d-flex flex-column">
+                <div id="map" class="rounded shadow flex-grow-1" style="min-height: 500px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-left">
+                <p>&copy; 2024 Public Transport Route Finder. All rights reserved.</p>
+            </div>
+            <div class="footer-right">
+                <a href="https://twitter.com" target="_blank"><i class="fab fa-twitter"></i></a>
+                <a href="https://facebook.com" target="_blank"><i class="fab fa-facebook-f"></i></a>
+                <a href="https://instagram.com" target="_blank"><i class="fab fa-instagram"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA-bATNaZz17C0nSa-gI9SFsWpplJknfQg&libraries=places"></script>
+    <script>
+
+let map, directionsService, directionsRenderer, userLocation, originMarker, destinationMarker;
+let useMapForOriginFlag = false;
+let useMapForDestinationFlag = false;
+
+// Define Lahore's geographical bounds for Autocomplete restriction only
+const lahoreBounds = {
+    north: 31.708050,  // Northernmost latitude of Lahore
+    south: 31.415877,  // Southernmost latitude of Lahore
+    east: 74.443516,   // Easternmost longitude of Lahore
+    west: 74.123528    // Westernmost longitude of Lahore
+};
+
+function initMap() {
+    // Initialize the map, center on Lahore without restricting movement
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 31.5497, lng: 74.3436 }, // Lahore's coordinates
+        zoom: 13,
+    });
+
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer();
+    directionsRenderer.setMap(map);
+
+    // Set up Autocomplete for origin and destination inputs and restrict it to Lahore
+    const options = {
+        bounds: lahoreBounds,  // Restrict autocomplete to Lahore bounds
+        strictBounds: true
+    };
+
+    const originInput = document.getElementById("origin");
+    const destinationInput = document.getElementById("destination");
+    const autocompleteOrigin = new google.maps.places.Autocomplete(originInput, options);
+    const autocompleteDestination = new google.maps.places.Autocomplete(destinationInput, options);
+
+    // Add event listeners for when a location is selected from the autocomplete
+    autocompleteOrigin.addListener('place_changed', function() {
+        const place = autocompleteOrigin.getPlace();
+        if (place.geometry) {
+            // Pan map to the selected origin location and place marker
+            if (originMarker) originMarker.setMap(null); // Clear previous marker
+            originMarker = new google.maps.Marker({
+                position: place.geometry.location,
+                map: map,
+                title: "Origin"
+            });
+            map.panTo(place.geometry.location);
+            map.setZoom(15);
+        }
+    });
+
+    autocompleteDestination.addListener('place_changed', function() {
+        const place = autocompleteDestination.getPlace();
+        if (place.geometry) {
+            // Pan map to the selected destination location and place marker
+            if (destinationMarker) destinationMarker.setMap(null); // Clear previous marker
+            destinationMarker = new google.maps.Marker({
+                position: place.geometry.location,
+                map: map,
+                title: "Destination"
+            });
+            map.panTo(place.geometry.location);
+            map.setZoom(15);
+        }
+    });
+
+    // Event listener for clicking on the map to select locations
+    map.addListener("click", function(event) {
+        if (useMapForOriginFlag) {
+            if (originMarker) {
+                originMarker.setMap(null);
+            }
+            originMarker = new google.maps.Marker({
+                position: event.latLng,
+                map: map,
+                title: "Origin"
+            });
+            document.getElementById("origin").value = `Pinned Location: ${event.latLng.lat()}, ${event.latLng.lng()}`;
+            map.panTo(event.latLng);
+            useMapForOriginFlag = false;
+        } else if (useMapForDestinationFlag) {
+            if (destinationMarker) {
+                destinationMarker.setMap(null);
+            }
+            destinationMarker = new google.maps.Marker({
+                position: event.latLng,
+                map: map,
+                title: "Destination"
+            });
+            document.getElementById("destination").value = `Pinned Location: ${event.latLng.lat()}, ${event.latLng.lng()}`;
+            map.panTo(event.latLng);
+            useMapForDestinationFlag = false;
+        }
+    });
+}
+
+// Functions to enable pinning location for origin or destination
+function useMapForOrigin() {
+    useMapForOriginFlag = true;
+    alert("Click on the map to select the origin location.");
+}
+
+function useMapForDestination() {
+    useMapForDestinationFlag = true;
+    alert("Click on the map to select the destination location.");
+}
+
+function findRoute() {
+    const originInput = document.getElementById("origin").value;
+    const destinationInput = document.getElementById("destination").value;
+
+    let origin, destination;
+
+    // Check if the input is a manually entered text or map-pinned location
+    if (originInput.includes("Pinned Location:")) {
+        const originLatLng = originInput.replace("Pinned Location:", "").trim().split(", ");
+        origin = new google.maps.LatLng(parseFloat(originLatLng[0]), parseFloat(originLatLng[1]));
+    } else if (originInput) {
+        origin = originInput; // Use manually entered origin
+    } else if (userLocation) {
+        origin = new google.maps.LatLng(userLocation.lat, userLocation.lng); // Use detected location
+    } else {
+        alert("Please enter or select a starting location.");
+        return;
+    }
+
+    if (destinationInput.includes("Pinned Location:")) {
+        const destinationLatLng = destinationInput.replace("Pinned Location:", "").trim().split(", ");
+        destination = new google.maps.LatLng(parseFloat(destinationLatLng[0]), parseFloat(destinationLatLng[1]));
+    } else if (destinationInput) {
+        destination = destinationInput; // Use manually entered destination
+    } else {
+        alert("Please enter or select a destination.");
+        return;
+    }
+
+    const request = {
+        origin: origin, // Manual or pinned origin
+        destination: destination, // Manual or pinned destination
+        travelMode: google.maps.TravelMode.TRANSIT,
+        region: 'PK' // Ensures the search focuses on Pakistan
+    };
+
+    directionsService.route(request, (result, status) => {
+        if (status === google.maps.DirectionsStatus.OK) {
+            directionsRenderer.setDirections(result);
+
+            // Display travel details
+            const route = result.routes[0].legs[0];
+
+           
+                document.getElementById("distance").style.display = "block";
+                document.getElementById("duration").style.display = "block";
+
+                document.getElementById("distance").value = `Distance: ${route.distance.text}`;
+                document.getElementById("duration").value = `Duration: ${route.duration.text}`;
+            const details = `
+                <p>Distance: ${route.distance.text}</p>
+                <p>Duration: ${route.duration.text}</p>
+            `;
+            document.getElementById("route-details").innerHTML = details;
+        } else {
+            alert('Could not find the route: ' + status);
+        }
+    });
+}
+
+window.onload = initMap;
+
+
+    </script>
+</body>
+</html>
